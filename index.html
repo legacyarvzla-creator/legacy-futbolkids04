@@ -9,6 +9,7 @@
         body { margin: 0; overflow: hidden; background-color: black; }
         #ui { position: absolute; z-index: 9999; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; padding: 10px 20px; background: rgba(0,0,0,0.6); border-radius: 50px; }
         .btn { width: 60px; height: 60px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.4); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .grabando { background: #f44336 !important; }
     </style>
 </head>
 <body>
@@ -22,7 +23,6 @@
 
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: no;" renderer="colorManagement: true, alpha: true" vr-mode-ui="enabled: false">
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        
         <a-entity mindar-image-target="targetIndex: 0"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
         <a-entity mindar-image-target="targetIndex: 1"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
         <a-entity mindar-image-target="targetIndex: 2"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
@@ -33,59 +33,68 @@
 
     <script>
         const video = document.querySelector('#miVideo');
+        let estaGrabando = false;
+        let mediaRecorder;
+        let animationFrame;
+
         document.addEventListener('click', () => { video.play().then(() => video.pause()); }, {once: true});
-        
-        // Bucle de detección mejorado
+
         document.querySelectorAll('a-entity[mindar-image-target]').forEach(target => {
             target.addEventListener("targetFound", () => video.play());
             target.addEventListener("targetLost", () => video.pause());
         });
 
-       // Reemplaza tu recordButton.addEventListener con esto:
-recordButton.addEventListener('click', async () => {
-    if (!estaGrabando) {
-        const canvasAR = document.querySelector('canvas');
-        
-        // 1. Crear el contexto de audio para inyectarlo sin bloquear el video
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioCtx.createMediaElementSource(video);
-        const destination = audioCtx.createMediaStreamDestination();
-        source.connect(destination);
+        recordButton.addEventListener('click', async () => {
+            if (!estaGrabando) {
+                const canvasAR = document.querySelector('canvas');
+                // Captura a 24fps para igualar tu material de origen
+                const stream = canvasAR.captureStream(24);
+                
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaElementSource(video);
+                const destination = audioCtx.createMediaStreamDestination();
+                source.connect(destination);
+                stream.addTrack(destination.stream.getAudioTracks()[0]);
 
-        // 2. Combinar Video del Canvas + Audio del AudioContext
-        const stream = canvasAR.captureStream(30);
-        const audioTracks = destination.stream.getAudioTracks();
-        if (audioTracks.length > 0) {
-            stream.addTrack(audioTracks[0]);
-        }
+                // Web Optimized: formato WebM nativo
+                mediaRecorder = new MediaRecorder(stream, { 
+                    mimeType: 'video/webm;codecs=vp8,opus',
+                    videoBitsPerSecond: 5000000 
+                });
 
-        // 3. Iniciar grabación
-        mediaRecorder = new MediaRecorder(stream, { 
-            mimeType: 'video/webm;codecs=vp8,opus',
-            videoBitsPerSecond: 5000000 
+                let chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    cancelAnimationFrame(animationFrame);
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'FutbolKids_Grabacion.webm';
+                    a.click();
+                    audioCtx.close();
+                };
+
+                // Bucle de refresco a 24fps constantes
+                const renderLoop = () => {
+                    if (estaGrabando) {
+                        if (video.paused) video.play();
+                        // setTimeout en lugar de rAF para controlar mejor los 24fps si es necesario
+                        setTimeout(() => { animationFrame = requestAnimationFrame(renderLoop); }, 1000/24);
+                    }
+                };
+                
+                mediaRecorder.start();
+                renderLoop();
+                estaGrabando = true;
+                recordButton.innerText = "⏹️";
+                recordButton.classList.add('grabando');
+            } else {
+                estaGrabando = false;
+                mediaRecorder.stop();
+                recordButton.innerText = "🔴";
+                recordButton.classList.remove('grabando');
+            }
         });
-
-        // Esto evita el "congelamiento": forzamos que el video siga reproduciéndose en background
-        video.play(); 
-
-        let chunks = [];
-        mediaRecorder.ondataavailable = e => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
-            a.download = 'FutbolKids_Grabacion.webm';
-            a.click();
-            audioCtx.close(); // Limpiamos el nodo de audio
-        };
-
-        mediaRecorder.start();
-        estaGrabando = true;
-        recordButton.innerText = "⏹️";
-        recordButton.classList.add('grabando');
-    } else {
-        mediaRecorder.stop();
-        estaGrabando = false;
-        recordButton.innerText = "🔴";
-        recordButton.classList.remove('grabando');
-    }
-});
+    </script>
+</body>
+</html>
