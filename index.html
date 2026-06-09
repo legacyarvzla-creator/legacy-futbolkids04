@@ -41,33 +41,51 @@
             target.addEventListener("targetLost", () => video.pause());
         });
 
-        // Grabación (tu versión funcional)
-        let mediaRecorder, estaGrabando = false;
-        document.getElementById('recordButton').onclick = async () => {
-            if (!estaGrabando) {
-                const canvasAR = document.querySelector('canvas');
-                const stream = canvasAR.captureStream(30);
-                const audioStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
-                if (audioStream) stream.addTrack(audioStream.getAudioTracks()[0]);
-                
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 5000000 });
-                let chunks = [];
-                mediaRecorder.ondataavailable = e => chunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
-                    a.download = 'FutbolKids.webm';
-                    a.click();
-                };
-                mediaRecorder.start();
-                estaGrabando = true;
-                recordButton.innerText = "⏹️";
-            } else {
-                mediaRecorder.stop();
-                estaGrabando = false;
-                recordButton.innerText = "🔴";
-            }
+       // Reemplaza tu recordButton.addEventListener con esto:
+recordButton.addEventListener('click', async () => {
+    if (!estaGrabando) {
+        const canvasAR = document.querySelector('canvas');
+        
+        // 1. Crear el contexto de audio para inyectarlo sin bloquear el video
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaElementSource(video);
+        const destination = audioCtx.createMediaStreamDestination();
+        source.connect(destination);
+
+        // 2. Combinar Video del Canvas + Audio del AudioContext
+        const stream = canvasAR.captureStream(30);
+        const audioTracks = destination.stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+            stream.addTrack(audioTracks[0]);
+        }
+
+        // 3. Iniciar grabación
+        mediaRecorder = new MediaRecorder(stream, { 
+            mimeType: 'video/webm;codecs=vp8,opus',
+            videoBitsPerSecond: 5000000 
+        });
+
+        // Esto evita el "congelamiento": forzamos que el video siga reproduciéndose en background
+        video.play(); 
+
+        let chunks = [];
+        mediaRecorder.ondataavailable = e => chunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+            a.download = 'FutbolKids_Grabacion.webm';
+            a.click();
+            audioCtx.close(); // Limpiamos el nodo de audio
         };
-    </script>
-</body>
-</html>
+
+        mediaRecorder.start();
+        estaGrabando = true;
+        recordButton.innerText = "⏹️";
+        recordButton.classList.add('grabando');
+    } else {
+        mediaRecorder.stop();
+        estaGrabando = false;
+        recordButton.innerText = "🔴";
+        recordButton.classList.remove('grabando');
+    }
+});
