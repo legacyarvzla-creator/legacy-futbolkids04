@@ -22,43 +22,62 @@
 
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: no;" renderer="colorManagement: true, alpha: true" vr-mode-ui="enabled: false">
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        
         <a-entity mindar-image-target="targetIndex: 0"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
-        <a-entity mindar-image-target="targetIndex: 1"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
-        <a-entity mindar-image-target="targetIndex: 2"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
-        <a-entity mindar-image-target="targetIndex: 3"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
-        <a-entity mindar-image-target="targetIndex: 4"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
-        <a-entity mindar-image-target="targetIndex: 5"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
-    </a-scene>
+        </a-scene>
 
     <script>
         const video = document.querySelector('#miVideo');
+        let estaGrabando = false;
+        let mediaRecorder, animationFrame;
+
+        // Autorización de audio
         document.addEventListener('click', () => { video.play().then(() => video.pause()); }, {once: true});
-        
-        // Bucle de detección mejorado
+
         document.querySelectorAll('a-entity[mindar-image-target]').forEach(target => {
             target.addEventListener("targetFound", () => video.play());
             target.addEventListener("targetLost", () => video.pause());
         });
 
-        // Grabación (tu versión funcional)
-        let mediaRecorder, estaGrabando = false;
-        document.getElementById('recordButton').onclick = async () => {
+        recordButton.onclick = async () => {
             if (!estaGrabando) {
+                // 1. Obtener la cámara (fondo) y el canvas (AR)
+                const videoCam = document.querySelector('video:not(#miVideo)');
                 const canvasAR = document.querySelector('canvas');
-                const stream = canvasAR.captureStream(30);
-                const audioStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
-                if (audioStream) stream.addTrack(audioStream.getAudioTracks()[0]);
                 
+                // 2. Crear un canvas de composición
+                const canvasComp = document.createElement('canvas');
+                canvasComp.width = canvasAR.width;
+                canvasComp.height = canvasAR.height;
+                const ctx = canvasComp.getContext('2d');
+
+                // 3. Loop de dibujo (Esto pone la cámara atrás y el AR adelante)
+                const draw = () => {
+                    ctx.drawImage(videoCam, 0, 0, canvasComp.width, canvasComp.height);
+                    ctx.drawImage(canvasAR, 0, 0, canvasComp.width, canvasComp.height);
+                    animationFrame = requestAnimationFrame(draw);
+                };
+                draw();
+
+                // 4. Capturar el stream del canvas de composición
+                const stream = canvasComp.captureStream(30);
+                // Agregar audio del video
+                const audioCtx = new AudioContext();
+                const source = audioCtx.createMediaElementSource(video);
+                const dest = audioCtx.createMediaStreamDestination();
+                source.connect(dest);
+                stream.addTrack(dest.stream.getAudioTracks()[0]);
+
                 mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 5000000 });
                 let chunks = [];
                 mediaRecorder.ondataavailable = e => chunks.push(e.data);
                 mediaRecorder.onstop = () => {
+                    cancelAnimationFrame(animationFrame);
                     const a = document.createElement('a');
                     a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
-                    a.download = 'FutbolKids.webm';
+                    a.download = 'FutbolKids_Completo.webm';
                     a.click();
                 };
+
                 mediaRecorder.start();
                 estaGrabando = true;
                 recordButton.innerText = "⏹️";
