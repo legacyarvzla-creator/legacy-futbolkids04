@@ -8,8 +8,8 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: black; }
         #ui { position: absolute; z-index: 9999; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; padding: 10px 20px; background: rgba(0,0,0,0.6); border-radius: 50px; }
-        .btn { width: 60px; height: 60px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.4); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-        .grabando { background: #f44336 !important; }
+        .btn { width: 60px; height: 60px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.4); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; }
+        .grabando { background: #f44336 !important; border-color: #f44336; }
     </style>
 </head>
 <body>
@@ -19,11 +19,11 @@
         <button id="torchButton" class="btn">💡</button>
     </div>
 
-   <video id="miVideo" src="video.mp4" playsinline loop muted="false" 
-       style="position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.1;"></video>
+    <video id="miVideo" src="video.mp4" preload="auto" crossorigin="anonymous" playsinline loop style="display:none"></video>
 
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: no;" renderer="colorManagement: true, alpha: true" vr-mode-ui="enabled: false">
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
         <a-entity mindar-image-target="targetIndex: 0"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
         <a-entity mindar-image-target="targetIndex: 1"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
         <a-entity mindar-image-target="targetIndex: 2"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
@@ -34,48 +34,51 @@
 
     <script>
         const video = document.querySelector('#miVideo');
-        let estaGrabando = false;
-        let mediaRecorder;
-        let animationFrame;
-
         document.addEventListener('click', () => { video.play().then(() => video.pause()); }, {once: true});
-
+        
         document.querySelectorAll('a-entity[mindar-image-target]').forEach(target => {
             target.addEventListener("targetFound", () => video.play());
             target.addEventListener("targetLost", () => video.pause());
         });
 
-      recordButton.addEventListener('click', async () => {
-    if (!estaGrabando) {
-        // Capturamos el stream del video en lugar del canvas
-        // Esto es mucho más ligero y no congela la imagen
-        const stream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
-        
-        mediaRecorder = new MediaRecorder(stream, { 
-            mimeType: 'video/webm;codecs=vp8,opus',
-            videoBitsPerSecond: 5000000 
-        });
+        let mediaRecorder, estaGrabando = false;
+        let isProcessing = false; // CANDADO DE SEGURIDAD
 
-        let chunks = [];
-        mediaRecorder.ondataavailable = e => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'FutbolKids_Grabacion.webm';
-            a.click();
+        document.getElementById('recordButton').onclick = async () => {
+            // Si el botón ya está haciendo algo, no hacemos nada
+            if (isProcessing) return;
+            isProcessing = true;
+
+            if (!estaGrabando) {
+                const canvasAR = document.querySelector('canvas');
+                const stream = canvasAR.captureStream(30);
+                const audioStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
+                if (audioStream) stream.addTrack(audioStream.getAudioTracks()[0]);
+                
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 5000000 });
+                let chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+                    a.download = 'FutbolKids.webm';
+                    a.click();
+                    isProcessing = false; // Liberamos candado al terminar descarga
+                };
+                mediaRecorder.start();
+                estaGrabando = true;
+                recordButton.innerText = "⏹️";
+                recordButton.classList.add('grabando');
+            } else {
+                mediaRecorder.stop();
+                estaGrabando = false;
+                recordButton.innerText = "🔴";
+                recordButton.classList.remove('grabando');
+            }
+            
+            // Retraso para evitar doble clic accidental
+            setTimeout(() => { isProcessing = false; }, 800);
         };
-
-        video.play(); // Forzamos el play
-        mediaRecorder.start();
-        estaGrabando = true;
-        recordButton.innerText = "⏹️";
-    } else {
-        mediaRecorder.stop();
-        estaGrabando = false;
-        recordButton.innerText = "🔴";
-    }
-});
     </script>
 </body>
 </html>
