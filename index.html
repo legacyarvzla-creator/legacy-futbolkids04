@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FutbolKids AR Pro</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: black; }
+        #ui { position: absolute; z-index: 9999; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; padding: 10px 20px; background: rgba(0,0,0,0.6); border-radius: 50px; }
+        .btn { width: 60px; height: 60px; border-radius: 50%; border: 2px solid white; background: rgba(0,0,0,0.4); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <button id="recordButton" class="btn">🔴</button>
+        <button id="torchButton" class="btn">💡</button>
+    </div>
+
+    <video id="miVideo" src="video.mp4" preload="auto" crossorigin="anonymous" playsinline loop style="display:none"></video>
+
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: no;" renderer="colorManagement: true, alpha: true" vr-mode-ui="enabled: false">
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
+        <a-entity mindar-image-target="targetIndex: 0"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
+        <a-entity mindar-image-target="targetIndex: 1"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
+        <a-entity mindar-image-target="targetIndex: 2"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
+        <a-entity mindar-image-target="targetIndex: 3"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
+        <a-entity mindar-image-target="targetIndex: 4"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
+        <a-entity mindar-image-target="targetIndex: 5"><a-plane src="#miVideo" width="1" height="1.77" material="shader: flat; src: #miVideo;"></a-plane></a-entity>
+    </a-scene>
+
+    <script>
+        const video = document.querySelector('#miVideo');
+        document.addEventListener('click', () => { video.play().then(() => video.pause()); }, {once: true});
+        
+        // Bucle de detección mejorado
+        document.querySelectorAll('a-entity[mindar-image-target]').forEach(target => {
+            target.addEventListener("targetFound", () => video.play());
+            target.addEventListener("targetLost", () => video.pause());
+        });
+
+        // Grabación (tu versión funcional)
+        let mediaRecorder, estaGrabando = false;
+        document.getElementById('recordButton').onclick = async () => {
+            if (!estaGrabando) {
+                const canvasAR = document.querySelector('canvas');
+                const stream = canvasAR.captureStream(30);
+                const audioStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
+                if (audioStream) stream.addTrack(audioStream.getAudioTracks()[0]);
+                
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 5000000 });
+                let chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+                    a.download = 'FutbolKids.webm';
+                    a.click();
+                };
+                mediaRecorder.start();
+                estaGrabando = true;
+                recordButton.innerText = "⏹️";
+            } else {
+                mediaRecorder.stop();
+                estaGrabando = false;
+                recordButton.innerText = "🔴";
+            }
+        };
+    </script>
+</body>
+</html>
